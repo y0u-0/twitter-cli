@@ -6,6 +6,11 @@
 
 A terminal-first CLI for Twitter/X: read timelines, bookmarks, and user profiles without API keys.
 
+## More Tools
+
+- [xhs-cli](https://github.com/jackwener/xhs-cli) — Xiaohongshu (小红书) CLI for notes and account workflows
+- [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili CLI for videos, users, search, and feeds
+
 [English](#english) | [中文](#中文)
 
 ## English
