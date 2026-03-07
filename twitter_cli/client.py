@@ -136,15 +136,20 @@ def _url_fetch(url, headers=None):
         return response.read().decode("utf-8")
 
 
-def _build_graphql_url(query_id, operation_name, variables, features):
-    # type: (str, str, Dict[str, Any], Dict[str, Any]) -> str
-    """Build GraphQL GET URL with encoded variables/features."""
-    return "https://x.com/i/api/graphql/%s/%s?variables=%s&features=%s" % (
+def _build_graphql_url(query_id, operation_name, variables, features, field_toggles=None):
+    # type: (str, str, Dict[str, Any], Dict[str, Any], Optional[Dict[str, Any]]) -> str
+    """Build GraphQL GET URL with encoded variables/features/fieldToggles."""
+    url = "https://x.com/i/api/graphql/%s/%s?variables=%s&features=%s" % (
         query_id,
         operation_name,
         urllib.parse.quote(json.dumps(variables, separators=(",", ":"))),
         urllib.parse.quote(json.dumps(features, separators=(",", ":"))),
     )
+    if field_toggles:
+        url += "&fieldToggles=%s" % urllib.parse.quote(
+            json.dumps(field_toggles, separators=(",", ":"))
+        )
+    return url
 
 
 def _scan_bundles():
@@ -396,6 +401,7 @@ class TwitterClient:
                 "focalTweetId": tweet_id,
                 "referrer": "tweet",
                 "with_rux_injections": False,
+                "includePromotedContent": True,
                 "rankingMode": "Relevance",
                 "withCommunity": True,
                 "withQuickPromoteEligibilityTweetFields": True,
@@ -403,6 +409,12 @@ class TwitterClient:
                 "withVoice": True,
             },
             override_base_variables=True,
+            field_toggles={
+                "withArticleRichContentState": True,
+                "withArticlePlainText": False,
+                "withGrokAnalyze": False,
+                "withDisallowedReplyControls": False,
+            },
         )
 
     def fetch_list_timeline(self, list_id, count=20):
@@ -497,8 +509,8 @@ class TwitterClient:
         self._graphql_post("DeleteBookmark", {"tweet_id": tweet_id})
         return True
 
-    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False):
-        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool) -> List[Tweet]
+    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False, field_toggles=None):
+        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]]) -> List[Tweet]
         """Generic timeline fetcher with pagination and deduplication.
 
         Args:
@@ -534,7 +546,7 @@ class TwitterClient:
             if cursor:
                 variables["cursor"] = cursor
 
-            data = self._graphql_get(operation_name, variables, FEATURES)
+            data = self._graphql_get(operation_name, variables, FEATURES, field_toggles=field_toggles)
             new_tweets, next_cursor = self._parse_timeline_response(data, get_instructions)
 
             for tweet in new_tweets:
@@ -553,12 +565,12 @@ class TwitterClient:
 
         return tweets[:count]
 
-    def _graphql_get(self, operation_name, variables, features):
-        # type: (str, Dict[str, Any], Dict[str, Any]) -> Dict[str, Any]
+    def _graphql_get(self, operation_name, variables, features, field_toggles=None):
+        # type: (str, Dict[str, Any], Dict[str, Any], Optional[Dict[str, Any]]) -> Dict[str, Any]
         """Issue GraphQL GET request with automatic stale-fallback retry."""
         query_id = _resolve_query_id(operation_name, prefer_fallback=True)
         using_fallback = query_id == FALLBACK_QUERY_IDS.get(operation_name)
-        url = _build_graphql_url(query_id, operation_name, variables, features)
+        url = _build_graphql_url(query_id, operation_name, variables, features, field_toggles)
 
         try:
             return self._api_get(url)
@@ -568,7 +580,7 @@ class TwitterClient:
                 logger.info("Retrying %s with live queryId after 404", operation_name)
                 _invalidate_query_id(operation_name)
                 refreshed_query_id = _resolve_query_id(operation_name, prefer_fallback=False)
-                retry_url = _build_graphql_url(refreshed_query_id, operation_name, variables, features)
+                retry_url = _build_graphql_url(refreshed_query_id, operation_name, variables, features, field_toggles)
                 return self._api_get(retry_url)
             raise RuntimeError(str(exc))
 
