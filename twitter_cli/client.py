@@ -106,6 +106,31 @@ class TwitterAPIError(RuntimeError):
         super().__init__(message)
         self.status_code = status_code
 
+def _best_chrome_target():
+    # type: () -> str
+    """Detect the best available Chrome impersonation target at runtime.
+
+    curl_cffi versions differ in which Chrome targets they ship.
+    e.g. 0.14.0 has chrome133a but not chrome133.
+    """
+    try:
+        from curl_cffi.requests import BrowserType
+        available = {e.value for e in BrowserType}
+    except Exception:
+        available = set()
+
+    # Preference order: exact chrome versions, then suffixed variants
+    for target in ("chrome133", "chrome133a", "chrome136", "chrome131", "chrome130"):
+        if target in available:
+            return target
+    # Fallback: pick highest chrome* with a pure numeric suffix
+    chrome_targets = sorted(
+        [v for v in available if v.startswith("chrome") and v.replace("chrome", "").isdigit()],
+        key=lambda x: int(x.replace("chrome", "")),
+        reverse=True,
+    )
+    return chrome_targets[0] if chrome_targets else "chrome131"
+
 
 def _get_cffi_session():
     # type: () -> Any
@@ -114,10 +139,12 @@ def _get_cffi_session():
     if _cffi_session is None:
         import os
         proxy = os.environ.get("TWITTER_PROXY", "")
+        target = _best_chrome_target()
         _cffi_session = _cffi_requests.Session(
-            impersonate="chrome133",
+            impersonate=target,
             proxies={"https": proxy, "http": proxy} if proxy else None,
         )
+        logger.info("curl_cffi impersonating %s", target)
         if proxy:
             logger.info("Using proxy: %s", proxy[:20] + "...")
     return _cffi_session

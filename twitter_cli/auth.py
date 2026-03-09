@@ -2,8 +2,10 @@
 
 Supports:
 1. Environment variables: TWITTER_AUTH_TOKEN + TWITTER_CT0
-2. Auto-extract from browser via browser-cookie3 (subprocess)
+2. Auto-extract from browser via browser-cookie3
    Extracts ALL Twitter cookies for full browser-like fingerprint.
+   Prefers in-process extraction (required on macOS for Keychain access),
+   falls back to subprocess if in-process fails (e.g. SQLite lock).
 """
 
 from __future__ import annotations
@@ -20,6 +22,14 @@ from curl_cffi import requests as _cffi_requests
 from .constants import BEARER_TOKEN, USER_AGENT
 
 logger = logging.getLogger(__name__)
+
+# Domains to match for Twitter cookies
+_TWITTER_DOMAINS = {"x.com", "twitter.com", ".x.com", ".twitter.com"}
+
+
+def _is_twitter_domain(domain):
+    # type: (str) -> bool
+    return domain in _TWITTER_DOMAINS or domain.endswith(".x.com") or domain.endswith(".twitter.com")
 
 
 def load_from_env() -> Optional[Dict[str, str]]:
@@ -39,6 +49,8 @@ def verify_cookies(auth_token, ct0, cookie_string=None):
     Tries multiple endpoints. Only raises on clear auth failures (401/403).
     For other errors (404, network), returns empty dict (proceed without verification).
     """
+    from .client import _best_chrome_target
+
     urls = [
         "https://api.x.com/1.1/account/verify_credentials.json",
         "https://x.com/i/api/1.1/account/settings.json",
@@ -58,7 +70,7 @@ def verify_cookies(auth_token, ct0, cookie_string=None):
 
     proxy = os.environ.get("TWITTER_PROXY", "")
     session = _cffi_requests.Session(
-        impersonate="chrome133",
+        impersonate=_best_chrome_target(),
         proxies={"https": proxy, "http": proxy} if proxy else None,
     )
 
@@ -85,16 +97,66 @@ def verify_cookies(auth_token, ct0, cookie_string=None):
     return {}
 
 
-def extract_from_browser() -> Optional[Dict[str, str]]:
-    """Auto-extract ALL Twitter cookies from local browser using browser-cookie3.
+def _extract_cookies_from_jar(jar):
+    # type: (Any) -> Optional[Dict[str, str]]
+    """Extract Twitter cookies from a cookie jar."""
+    result = {}  # type: Dict[str, str]
+    all_cookies = {}  # type: Dict[str, str]
+    for cookie in jar:
+        domain = cookie.domain or ""
+        if _is_twitter_domain(domain):
+            if cookie.name == "auth_token":
+                result["auth_token"] = cookie.value
+            elif cookie.name == "ct0":
+                result["ct0"] = cookie.value
+            if cookie.name and cookie.value:
+                all_cookies[cookie.name] = cookie.value
+    if "auth_token" in result and "ct0" in result:
+        cookies = {"auth_token": result["auth_token"], "ct0": result["ct0"]}
+        if all_cookies:
+            cookies["cookie_string"] = "; ".join("%s=%s" % (k, v) for k, v in all_cookies.items())
+            logger.info("Extracted %d total cookies for full browser fingerprint", len(all_cookies))
+        return cookies
+    return None
 
-    Extracts every cookie for .x.com and .twitter.com domains, not just
-    auth_token and ct0. This makes requests indistinguishable from real
-    browser traffic at the cookie level.
 
-    Tries browsers in order: Chrome -> Edge -> Firefox -> Brave.
-    Runs in a subprocess to avoid SQLite database lock issues.
+def _extract_in_process():
+    # type: () -> Optional[Dict[str, str]]
+    """Extract cookies in the main process (required on macOS for Keychain access).
+
+    On macOS, Chrome encrypts cookies using a key stored in the system Keychain.
+    Child processes do NOT inherit the parent's Keychain authorization, so
+    browser_cookie3 must run in the main process to decrypt cookies.
     """
+    try:
+        import browser_cookie3
+    except ImportError:
+        logger.debug("browser_cookie3 not installed, skipping in-process extraction")
+        return None
+
+    browsers = [
+        ("chrome", browser_cookie3.chrome),
+        ("edge", browser_cookie3.edge),
+        ("firefox", browser_cookie3.firefox),
+        ("brave", browser_cookie3.brave),
+    ]
+
+    for name, fn in browsers:
+        try:
+            jar = fn()
+        except Exception as e:
+            logger.debug("%s in-process extraction failed: %s", name, e)
+            continue
+        cookies = _extract_cookies_from_jar(jar)
+        if cookies:
+            logger.info("Found cookies in %s (in-process)", name)
+            return cookies
+    return None
+
+
+def _extract_via_subprocess():
+    # type: () -> Optional[Dict[str, str]]
+    """Extract cookies via subprocess (fallback if in-process fails, e.g. SQLite lock)."""
     extract_script = '''
 import json, sys
 try:
@@ -124,7 +186,6 @@ for name, fn in browsers:
                 result["auth_token"] = cookie.value
             elif cookie.name == "ct0":
                 result["ct0"] = cookie.value
-            # Collect ALL cookies for full browser fingerprint
             if cookie.name and cookie.value:
                 all_cookies[cookie.name] = cookie.value
     if "auth_token" in result and "ct0" in result:
@@ -164,7 +225,7 @@ sys.exit(1)
         data = json.loads(output)
         if "error" in data:
             return None
-        logger.info("Found cookies in %s", data.get("browser", "unknown"))
+        logger.info("Found cookies in %s (subprocess)", data.get("browser", "unknown"))
 
         # Build full cookie string from all extracted cookies
         cookies = {"auth_token": data["auth_token"], "ct0": data["ct0"]}
@@ -176,6 +237,23 @@ sys.exit(1)
         return cookies
     except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, FileNotFoundError):
         return None
+
+
+def extract_from_browser() -> Optional[Dict[str, str]]:
+    """Auto-extract ALL Twitter cookies from local browser using browser-cookie3.
+
+    Strategy:
+    1. Try in-process first (required on macOS for Keychain access)
+    2. Fall back to subprocess (handles SQLite lock when browser is running)
+    """
+    # 1. In-process (works on macOS, may fail with SQLite lock)
+    cookies = _extract_in_process()
+    if cookies:
+        return cookies
+
+    # 2. Subprocess fallback (handles SQLite lock, but fails on macOS Keychain)
+    logger.debug("In-process extraction failed, trying subprocess fallback")
+    return _extract_via_subprocess()
 
 
 def get_cookies() -> Dict[str, str]:
@@ -204,4 +282,5 @@ def get_cookies() -> Dict[str, str]:
     # Verify only for explicit auth failures; transient endpoint issues are tolerated.
     verify_cookies(cookies["auth_token"], cookies["ct0"], cookies.get("cookie_string"))
     return cookies
+
 
