@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 # Shared curl_cffi session — impersonates Chrome 133 TLS/JA3/HTTP2 fingerprint
 _cffi_session = None  # type: Optional[Any]  # lazy init
-_cffi_proxy = None  # type: Optional[str]
 
 
 FALLBACK_QUERY_IDS = {

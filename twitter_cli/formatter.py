@@ -79,7 +79,7 @@ def print_tweet_table(tweets, console=None, title=None):
         )
 
         # Score
-        score_str = "%.1f" % tweet.score if tweet.score else "-"
+        score_str = "%.1f" % tweet.score if tweet.score is not None else "-"
 
         table.add_row(str(i + 1), author_text, text, stats, score_str)
 
