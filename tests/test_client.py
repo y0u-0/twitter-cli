@@ -176,6 +176,23 @@ class TestBuildGraphqlUrl:
         url = _build_graphql_url("x", "Op", {}, {}, {"toggle": True})
         assert "fieldToggles=" in url
 
+    def test_false_features_omitted_from_url(self):
+        """False-valued features should be omitted to keep URL short (avoid 414)."""
+        features = {"enabled_flag": True, "disabled_flag": False, "another_enabled": True}
+        url = _build_graphql_url("q", "Op", {}, features)
+        assert "enabled_flag" in url
+        assert "another_enabled" in url
+        assert "disabled_flag" not in url
+
+    def test_url_length_with_full_features(self):
+        """URL with full FEATURES dict should stay under 8000 chars (server limit)."""
+        url = _build_graphql_url(
+            "abc123", "SearchTimeline",
+            {"rawQuery": "AI agent", "querySource": "typed_query", "product": "Latest", "count": 50},
+            FEATURES,
+        )
+        assert len(url) < 8000, f"URL too long: {len(url)} chars"
+
 
 # ── _best_chrome_target ──────────────────────────────────────────────────
 

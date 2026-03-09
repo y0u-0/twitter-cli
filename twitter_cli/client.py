@@ -164,12 +164,18 @@ def _url_fetch(url, headers=None):
 
 def _build_graphql_url(query_id, operation_name, variables, features, field_toggles=None):
     # type: (str, str, Dict[str, Any], Dict[str, Any], Optional[Dict[str, Any]]) -> str
-    """Build GraphQL GET URL with encoded variables/features/fieldToggles."""
+    """Build GraphQL GET URL with encoded variables/features/fieldToggles.
+
+    Only includes True-valued feature flags in the URL to avoid 414 URI Too Long.
+    Twitter's API defaults missing features to False.
+    """
+    # Compact features: omit False values to keep URL under server limits
+    compact_features = {k: v for k, v in features.items() if v is not False}
     url = "https://x.com/i/api/graphql/%s/%s?variables=%s&features=%s" % (
         query_id,
         operation_name,
         urllib.parse.quote(json.dumps(variables, separators=(",", ":"))),
-        urllib.parse.quote(json.dumps(features, separators=(",", ":"))),
+        urllib.parse.quote(json.dumps(compact_features, separators=(",", ":"))),
     )
     if field_toggles:
         url += "&fieldToggles=%s" % urllib.parse.quote(
