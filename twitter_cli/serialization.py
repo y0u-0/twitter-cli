@@ -112,7 +112,7 @@ def tweet_from_dict(data: Dict[str, Any]) -> Tweet:
         lang=str(data.get("lang") or ""),
         retweeted_by=_optional_str(data.get("retweetedBy")),
         quoted_tweet=quoted_tweet,
-        score=float(data.get("score") or 0.0),
+        score=float(data["score"]) if data.get("score") is not None else None,
     )
 
 

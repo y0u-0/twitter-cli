@@ -49,7 +49,7 @@ class Tweet:
     lang: str = ""
     retweeted_by: Optional[str] = None
     quoted_tweet: Optional[Tweet] = None
-    score: float = 0.0
+    score: Optional[float] = None
 
 
 @dataclass

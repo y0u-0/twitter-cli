@@ -15,7 +15,10 @@ from curl_cffi import requests as _cffi_requests
 from x_client_transaction import ClientTransaction
 from x_client_transaction.utils import generate_headers as _gen_ct_headers, get_ondemand_file_url
 
-from .constants import BEARER_TOKEN, USER_AGENT, SEC_CH_UA, SEC_CH_UA_MOBILE, SEC_CH_UA_PLATFORM
+from .constants import (
+    BEARER_TOKEN, SEC_CH_UA_MOBILE, SEC_CH_UA_PLATFORM,
+    get_sec_ch_ua, get_user_agent, sync_chrome_version,
+)
 from .models import Author, Metrics, Tweet, TweetMedia, UserProfile
 
 logger = logging.getLogger(__name__)
@@ -124,6 +127,7 @@ def _get_cffi_session():
         import os
         proxy = os.environ.get("TWITTER_PROXY", "")
         target = _best_chrome_target()
+        sync_chrome_version(target)  # align UA/sec-ch-ua with impersonate target
         _cffi_session = _cffi_requests.Session(
             impersonate=target,
             proxies={"https": proxy, "http": proxy} if proxy else None,
@@ -174,7 +178,7 @@ def _scan_bundles():
     _bundles_scanned = True
 
     try:
-        html = _url_fetch("https://x.com", {"user-agent": USER_AGENT})
+        html = _url_fetch("https://x.com", {"user-agent": get_user_agent()})
         script_pattern = re.compile(
             r'(?:src|href)=["\']'
             r'(https://abs\.twimg\.com/responsive-web/client-web[^"\']+\.js)'
@@ -685,12 +689,12 @@ class TwitterClient:
             "X-Twitter-Active-User": "yes",
             "X-Twitter-Auth-Type": "OAuth2Session",
             "X-Twitter-Client-Language": "en",
-            "User-Agent": USER_AGENT,
+            "User-Agent": get_user_agent(),
             "Origin": "https://x.com",
             "Referer": "https://x.com",
             "Accept": "*/*",
             "Accept-Language": "en-US,en;q=0.9",
-            "sec-ch-ua": SEC_CH_UA,
+            "sec-ch-ua": get_sec_ch_ua(),
             "sec-ch-ua-mobile": SEC_CH_UA_MOBILE,
             "sec-ch-ua-platform": SEC_CH_UA_PLATFORM,
             "Sec-Fetch-Dest": "empty",

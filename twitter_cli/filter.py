@@ -21,7 +21,7 @@ DEFAULT_WEIGHTS = {
 
 
 def score_tweet(tweet, weights=None):
-    # type: (Tweet, Optional[FilterWeights]) -> float
+    # type: (Tweet, Optional[Dict[str, float]]) -> float
     """Calculate engagement score for a single tweet.
 
     Formula:
@@ -30,15 +30,18 @@ def score_tweet(tweet, weights=None):
             + w_replies × replies
             + w_bookmarks × bookmarks
             + w_views_log × log10(views)
+
+    Args:
+        weights: Pre-built weight dict. If None, uses DEFAULT_WEIGHTS.
     """
-    weight_map = _build_weights(weights or {})
+    w = weights or DEFAULT_WEIGHTS
     m = tweet.metrics
     return (
-        weight_map["likes"] * m.likes
-        + weight_map["retweets"] * m.retweets
-        + weight_map["replies"] * m.replies
-        + weight_map["bookmarks"] * m.bookmarks
-        + weight_map["views_log"] * math.log10(max(m.views, 1))
+        w.get("likes", 1.0) * m.likes
+        + w.get("retweets", 3.0) * m.retweets
+        + w.get("replies", 2.0) * m.replies
+        + w.get("bookmarks", 5.0) * m.bookmarks
+        + w.get("views_log", 0.5) * math.log10(max(m.views, 1))
     )
 
 

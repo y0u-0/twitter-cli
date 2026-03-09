@@ -244,8 +244,9 @@ def user(screen_name):
 @click.argument("screen_name")
 @click.option("--max", "-n", "max_count", type=int, default=20, help="Max number of tweets to fetch.")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
-def user_posts(screen_name, max_count, as_json):
-    # type: (str, int, bool) -> None
+@click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
+def user_posts(screen_name, max_count, as_json, output_file):
+    # type: (str, int, bool, Optional[str]) -> None
     """List a user's tweets. SCREEN_NAME is the @handle (without @)."""
     screen_name = screen_name.lstrip("@")
     config = load_config()
@@ -258,7 +259,7 @@ def user_posts(screen_name, max_count, as_json):
         sys.exit(1)
     _fetch_and_display(
         lambda count: client.fetch_user_tweets(profile.id, count),
-        "@%s tweets" % screen_name, "📝", max_count, as_json, None, False, config,
+        "@%s tweets" % screen_name, "📝", max_count, as_json, output_file, False, config,
     )
 
 
@@ -277,15 +278,16 @@ SEARCH_PRODUCTS = ["Top", "Latest", "Photos", "Videos"]
 )
 @click.option("--max", "-n", "max_count", type=int, default=20, help="Max number of tweets to fetch.")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
 @click.option("--filter", "do_filter", is_flag=True, help="Enable score-based filtering.")
-def search(query, product, max_count, as_json, do_filter):
-    # type: (str, str, int, bool, bool) -> None
+def search(query, product, max_count, as_json, output_file, do_filter):
+    # type: (str, str, int, bool, Optional[str], bool) -> None
     """Search tweets by QUERY string."""
     config = load_config()
     client = _get_client(config)
     _fetch_and_display(
         lambda count: client.fetch_search(query, count, product),
-        "'%s' (%s)" % (query, product), "🔍", max_count, as_json, None, do_filter, config,
+        "'%s' (%s)" % (query, product), "🔍", max_count, as_json, output_file, do_filter, config,
     )
 
 
@@ -293,9 +295,10 @@ def search(query, product, max_count, as_json, do_filter):
 @click.argument("screen_name")
 @click.option("--max", "-n", "max_count", type=int, default=20, help="Max number of tweets to fetch.")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
 @click.option("--filter", "do_filter", is_flag=True, help="Enable score-based filtering.")
-def likes(screen_name, max_count, as_json, do_filter):
-    # type: (str, int, bool, bool) -> None
+def likes(screen_name, max_count, as_json, output_file, do_filter):
+    # type: (str, int, bool, Optional[str], bool) -> None
     """Show tweets liked by a user. SCREEN_NAME is the @handle (without @)."""
     screen_name = screen_name.lstrip("@")
     config = load_config()
@@ -308,7 +311,7 @@ def likes(screen_name, max_count, as_json, do_filter):
         sys.exit(1)
     _fetch_and_display(
         lambda count: client.fetch_user_likes(profile.id, count),
-        "@%s likes" % screen_name, "❤️", max_count, as_json, None, do_filter, config,
+        "@%s likes" % screen_name, "❤️", max_count, as_json, output_file, do_filter, config,
     )
 
 

@@ -17,9 +17,7 @@ import subprocess
 import sys
 from typing import Dict, Optional
 
-from curl_cffi import requests as _cffi_requests
-
-from .constants import BEARER_TOKEN, USER_AGENT
+from .constants import BEARER_TOKEN, get_user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +47,7 @@ def verify_cookies(auth_token, ct0, cookie_string=None):
     Tries multiple endpoints. Only raises on clear auth failures (401/403).
     For other errors (404, network), returns empty dict (proceed without verification).
     """
-    from .client import _best_chrome_target
+    from .client import _get_cffi_session
 
     urls = [
         "https://api.x.com/1.1/account/verify_credentials.json",
@@ -65,14 +63,11 @@ def verify_cookies(auth_token, ct0, cookie_string=None):
         "X-Csrf-Token": ct0,
         "X-Twitter-Active-User": "yes",
         "X-Twitter-Auth-Type": "OAuth2Session",
-        "User-Agent": USER_AGENT,
+        "User-Agent": get_user_agent(),
     }
 
-    proxy = os.environ.get("TWITTER_PROXY", "")
-    session = _cffi_requests.Session(
-        impersonate=_best_chrome_target(),
-        proxies={"https": proxy, "http": proxy} if proxy else None,
-    )
+    # Reuse the shared curl_cffi session for consistent TLS fingerprint
+    session = _get_cffi_session()
 
     for url in urls:
         try:
